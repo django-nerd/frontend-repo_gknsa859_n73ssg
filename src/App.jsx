@@ -1,18 +1,42 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Hero from './components/Hero'
 import Benefits from './components/Benefits'
 import Author from './components/Author'
 import Testimonials from './components/Testimonials'
 import SignupModal from './components/SignupModal'
+import SamplePreview from './components/SamplePreview'
 
 function App() {
   const [open, setOpen] = useState(false)
+  const [manuscript, setManuscript] = useState(null)
+  const [ingesting, setIngesting] = useState(false)
+  const [ingestError, setIngestError] = useState('')
 
-  // Placeholder content until real assets are provided
-  const title = 'Your Book Title'
-  const subtitle = 'A clear, compelling one-liner that promises the core outcome of your book.'
-  const coverUrl = 'https://images.unsplash.com/photo-1544937950-fa07a98d237f?q=80&w=800&auto=format&fit=crop'
-  const purchaseUrl = '#'
+  // Placeholder content until real assets are provided or ingested
+  const fallback = {
+    title: 'Your Book Title',
+    subtitle: 'A clear, compelling one-liner that promises the core outcome of your book.',
+    coverUrl: 'https://images.unsplash.com/photo-1544937950-fa07a98d237f?q=80&w=800&auto=format&fit=crop',
+    purchaseUrl: '#',
+  }
+
+  useEffect(() => {
+    const loadLatest = async () => {
+      try {
+        const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+        const res = await fetch(`${baseUrl}/api/manuscript/latest`)
+        const data = await res.json()
+        if (data.exists) setManuscript(data.manuscript)
+      } catch {}
+    }
+    loadLatest()
+  }, [])
+
+  const title = manuscript?.title || fallback.title
+  const subtitle = manuscript?.subtitle || fallback.subtitle
+  const coverUrl = manuscript?.cover_url || fallback.coverUrl
+  const purchaseUrl = fallback.purchaseUrl
+
   const benefits = [
     { title: 'Actionable frameworks', description: 'Step-by-step guidance you can apply immediately.' },
     { title: 'Research-backed insights', description: 'Distilled from real-world experience and data.' },
@@ -32,6 +56,32 @@ function App() {
     { text: 'This book will save you months of trial and error.', author: 'Coach & Consultant' },
   ]
 
+  // Ingest helper for optional step
+  const ingest = async () => {
+    const url = window.prompt('Paste a direct-download link to your manuscript (PDF/EPUB/DOCX/MD). For Google Docs, use /export?format=docx')
+    if (!url) return
+    setIngesting(true)
+    setIngestError('')
+    try {
+      const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+      const res = await fetch(`${baseUrl}/api/ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_url: url })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Ingestion failed')
+      // refresh manuscript
+      const res2 = await fetch(`${baseUrl}/api/manuscript/latest`)
+      const data2 = await res2.json()
+      if (data2.exists) setManuscript(data2.manuscript)
+    } catch (e) {
+      setIngestError(e.message)
+    } finally {
+      setIngesting(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.05),transparent_50%)]"></div>
@@ -44,15 +94,18 @@ function App() {
         purchaseUrl={purchaseUrl}
       />
 
+      <div className="max-w-6xl mx-auto px-6 flex items-center gap-3">
+        <button onClick={ingest} className="inline-flex items-center px-3 py-1.5 rounded-md bg-white/10 text-white hover:bg-white/20 text-sm">
+          {ingesting ? 'Ingesting…' : 'Ingest manuscript'}
+        </button>
+        {ingestError && <span className="text-red-300 text-sm">{ingestError}</span>}
+      </div>
+
       <Benefits items={benefits} />
 
       <section className="py-16">
         <div className="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-8 items-start">
-          <div className="bg-slate-800/60 border border-white/10 rounded-2xl p-6">
-            <h2 className="text-2xl font-bold text-white">Peek Inside</h2>
-            <p className="mt-2 text-blue-200/80 text-sm">We can showcase a sample chapter here once your manuscript is ingested. Optionally email-gate the download.</p>
-            <button onClick={() => setOpen(true)} className="mt-4 inline-flex items-center px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20">Get the free sample</button>
-          </div>
+          <SamplePreview />
           <div className="bg-slate-800/60 border border-white/10 rounded-2xl p-6">
             <h3 className="text-xl font-semibold text-white">What you'll learn</h3>
             <ul className="list-disc list-inside mt-3 text-blue-200/80 space-y-1">
@@ -60,6 +113,7 @@ function App() {
               <li>Key idea two</li>
               <li>Key idea three</li>
             </ul>
+            <button onClick={() => setOpen(true)} className="mt-6 inline-flex items-center px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20">Get the free sample</button>
           </div>
         </div>
       </section>
